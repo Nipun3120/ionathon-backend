@@ -1,10 +1,8 @@
 import requests
 import os
-import json
 import pandas as pd
 import re
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
-from datetime import date
 import numpy as np
 import joblib
 import twint
@@ -17,46 +15,14 @@ from nsepy import get_history
 from datetime import datetime, timedelta
 # import datetime
 import yfinance as yf
+from dotenv import load_dotenv
 
-# To set your environment variables in your terminal run the following line:
-# export 'BEARER_TOKEN'='<your_bearer_token>'
-# bearer_token = os.environ.get("BEARER_TOKEN")
 
+# MODELS
 MODEL_APPLE = tf.keras.models.load_model('models/apple_savedmodel/')
 MODEL_MICROSOFT = tf.keras.models.load_model('models/microsoft_savedmodel/')
 MODEL_NIFTY = tf.keras.models.load_model('models/nifty_savedmodel/')
 MODEL_DOW = tf.keras.models.load_model('models/dow_savedmodel/')
-
-
-search_url = "https://api.twitter.com/2/tweets/search/recent"
-
-# Optional params: start_time,end_time,since_id,until_id,max_results,next_token,
-# expansions,tweet.fields,media.fields,poll.fields,place.fields,user.fields
-query_params = {'query': '(from:twitterdev) OR #AAPL'}
-
-
-def bearer_oauth(r):
-    """
-    Method required by bearer token authentication.
-    """
-
-    r.headers["Authorization"] = f"Bearer AAAAAAAAAAAAAAAAAAAAAAgMagEAAAAA1jhzo0ae0HAaHTu82gDkAAntQFA%3DeMwc9XfLQ3N77crjOs1YUva7GZoJ34Afl1DW85EJPPJMYj1HhW"
-    r.headers["User-Agent"] = "v2RecentSearchPython"
-    return r
-
-def connect_to_endpoint(url, params, day):
-    response = requests.get(url, auth=bearer_oauth, params=params)
-    print(response.status_code)
-    if response.status_code != 200:
-        raise Exception(response.status_code, response.text)
-    return response.json()
-
-
-# def fetch_tweets_from_api(day):
-
-#     json_response = connect_to_endpoint(search_url, query_params, day)
-# #     print(json.dumps(json_response, indent=4, sort_keys=True))
-#     return json_response
 
 
 def decontracted(phrase):
@@ -166,15 +132,8 @@ async def getTweetsWithSentiments(city, keyword, sinceDate, untilDate):
     print(common_dates_1)
 
     for i in common_dates_1:
-        # print(i)
-        # print('sentiment mean', type(df_final[df_final['date'] == i]['sentiment'].mean()),df_final[df_final['date'] == i]['sentiment'].mean())
         dates.append(df_final[df_final['date'] == i]['sentiment'].mean())
         prices.append(stock_prices[stock_prices['Date'] == i]['open-close'].values[0])
-
-    
-    print('--------->', dates)
-    print('---------->', prices)
-    
 
     return df_final, pearsonr(np.append(np.array(prices)[1:], 1), np.array(dates))
 
@@ -192,9 +151,8 @@ async def fetchStockPrices(currDate, prevDate, keyword):
     if keyword == "MSFT" or keyword == "AAPL":
         res = requests.get(f'https://api.polygon.io/v2/aggs/ticker/{keyword}/range/1/day/{prevDate}/{currDate}?adjusted=true&sort=desc&apiKey=39ngr6sQIbZKPDfWGh4yMh5dLzpL9wzf').json()
 
-        # datetime.utcfromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S'))
         stock_60 = pd.DataFrame(list(zip([datetime.fromtimestamp(agg['t']/1000).strftime('%Y-%m-%d') for agg in res['results']][:60], [agg['c'] for agg in res['results']][:60], [agg['o'] for agg in res['results']][:60])), columns = ['Date', 'Close', 'Open'])
-        # stock_60 = {'Close':[agg['c'] for agg in res['results']][:60], 'Open':[agg['c'] for agg in res['results']][:60] }
+
         return stock_60
 
     if keyword == "NIFTY":
