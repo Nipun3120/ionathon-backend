@@ -82,60 +82,74 @@ def stripdate(date):
 # abbe krne de do min acha oki
 # change all occurences kara hai
 #thode changes karne padenge, isme sab kaam ho rha ab, short mein. tumhara front end pe bhi yahi se bhej dena
+tweets_df = []
+config = []
 async def getTweetsWithSentiments(city, keyword, sinceDate, untilDate):
-    config = twint.Config()
-    config.Near = city
-    config.Search = keyword
-    config.Lang = "en"
-    config.Since = str(sinceDate)
-    config.Until = str(untilDate)
+
+    global config
+
+    config.append(twint.Config())
+    config[-1].Near = city
+    config[-1].Search = keyword
+    config[-1].Lang = "en"
+    config[-1].Since = str(sinceDate)
+    config[-1].Until = str(untilDate)
     # config.Until = str(untilDate.date())
-    config.Popular_tweets = True
-    config.Pandas = True
-    config.limit = 100
+    config[-1].Popular_tweets = True
+    config[-1].Pandas = True
+    config[-1].limit = 100
+    config[-1].Hide_output = True
 
-    twint.run.Search(config)
-    tweets_df = twint.storage.panda.Tweets_df
-    # tweets = list(tweets_df['tweet'])
+    twint.run.Search(config[-1])
 
-    tweets_df['date'] = tweets_df['date'].apply(stripdate)
-    tweets_df['tweet_clean'] = tweets_df['tweet'].apply(clean)
-    tweets_df = tweets_df.sort_values(['date','nreplies','nlikes','nretweets'], ascending=[False, False, False, False])[['date', 'tweet', 'tweet_clean', 'nlikes','nretweets', 'nreplies']].reset_index()
+    global tweets_df
 
-    a = list(tweets_df.columns)
+    tweets_df.append(twint.storage.panda.Tweets_df)
+
+    print('keyword------------->', keyword)
+    print(tweets_df[-1][['tweet', 'date']])
+
+    tweets_df[-1]['date'] = tweets_df[-1]['date'].apply(stripdate)
+    tweets_df[-1]['tweet_clean'] = tweets_df[-1]['tweet'].apply(clean)
+    tweets_df[-1] = tweets_df[-1].sort_values(['date','nreplies','nlikes','nretweets'], ascending=[False, False, False, False])[['date', 'tweet', 'tweet_clean', 'nlikes','nretweets', 'nreplies']].reset_index()
+
+    a = list(tweets_df[-1].columns)
     a.append('sentiment')
     df_final = pd.DataFrame(columns = a)
-    for date in list(tweets_df['date'].unique()):
-        df_temp = pd.DataFrame(columns = tweets_df.columns)
-        df_temp = df_temp.append(tweets_df[tweets_df['date']==date][:20])
+    for date in list(tweets_df[-1]['date'].unique()):
+        df_temp = pd.DataFrame(columns = tweets_df[-1].columns)
+        df_temp = pd.concat([df_temp,tweets_df[-1][tweets_df[-1]['date']==date][:20]])
 
-        df_temp['sentiment'] = tweets_df[tweets_df['date']==date][:20]['tweet'].apply(flair_sentiments)
-        df_final = df_final.append(df_temp)
+        df_temp['sentiment'] = tweets_df[-1][tweets_df[-1]['date']==date][:20]['tweet'].apply(flair_sentiments)
+        df_final = pd.concat([df_final,df_temp])
+
     df_final = df_final.sort_values(['date', 'sentiment'], ascending= [False, False])
 
-    dates = []
+    sentiments = []
     prices = []
 
     stock_prices = await fetchStockPrices(untilDate, untilDate - timedelta(days=10), keyword)
     stock_prices['open-close'] = stock_prices ['Open'] - stock_prices['Close']
 
-    print(stock_prices)
-    print(df_final)
-
     s = set(list(df_final['date']))
     n = set([x for x in list(stock_prices['Date'])])
 
-    print(n, s)
 
     common_dates_1 = [x for x in s if x in n]
 
-    print(common_dates_1)
 
     for i in common_dates_1:
-        dates.append(df_final[df_final['date'] == i]['sentiment'].mean())
+        sentiments.append(df_final[df_final['date'] == i]['sentiment'].mean())
         prices.append(stock_prices[stock_prices['Date'] == i]['open-close'].values[0])
+    
+    # prices = np.append(np.nan, np.array(prices)[:-1])
+    # mask = np.isnan(prices)
+    # idx = np.where(~mask,np.arange(mask.shape[1]),0)
+    # np.maximum.accumulate(idx,axis=1, out=idx)
+    # prices = prices[idx]
 
-    return df_final, pearsonr(np.append(np.array(prices)[1:], 1), np.array(dates))
+    return df_final, pearsonr(np.append(np.mean(prices), np.array(prices)[:-1]), np.array(sentiments))
+    return df_final, pearsonr(prices, np.array(sentiments))
 
 
 def getTopTweets(tweets, sentiments):
@@ -156,7 +170,7 @@ async def fetchStockPrices(currDate, prevDate, keyword):
         return stock_60
 
     if keyword == "NIFTY":
-        print(prevDate, currDate)
+        # print(prevDate, currDate)
         data = get_history(symbol=keyword, start=prevDate, end=currDate, index=True)
         # print(data)
         a = data.index.copy()
